@@ -1,5 +1,331 @@
-<html>
-<body>
-test
-</body>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+      <meta charset="utf-8">
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <meta name="description" content="">
+      <meta name="author" content="">
+      <link rel="apple-touch-icon" sizes="57x57" href="media/img/apple-icon-57x57.png">
+	  <link rel="apple-touch-icon" sizes="60x60" href="media/img/apple-icon-60x60.png">
+	  <link rel="apple-touch-icon" sizes="72x72" href="media/img/apple-icon-72x72.png">
+	  <link rel="apple-touch-icon" sizes="76x76" href="media/img/apple-icon-76x76.png">
+	  <link rel="apple-touch-icon" sizes="114x114" href="media/img/apple-icon-114x114.png">
+	  <link rel="apple-touch-icon" sizes="120x120" href="media/img/apple-icon-120x120.png">
+	  <link rel="apple-touch-icon" sizes="144x144" href="media/apple-icon-144x144.png">
+	  <link rel="apple-touch-icon" sizes="152x152" href="media/img/apple-icon-152x152.png">
+	  <link rel="apple-touch-icon" sizes="180x180" href="media/img/apple-icon-180x180.png">
+	  <link rel="icon" type="image/png" sizes="192x192"  href="media/img/android-icon-192x192.png">
+	  <link rel="icon" type="image/png" sizes="32x32" href="media/img/favicon-32x32.png">
+	  <link rel="icon" type="image/png" sizes="96x96" href="media/img/favicon-96x96.png">
+	  <link rel="icon" type="image/png" sizes="16x16" href="media/img/favicon-16x16.png">
+	  <link rel="manifest" href="media/img/manifest.json">
+	  <meta name="msapplication-TileColor" content="#ffffff">
+	  <meta name="msapplication-TileImage" content="media/img/ms-icon-144x144.png">
+	  <meta name="theme-color" content="#ffffff">
+      <title>Raccoon Attack</title>
+      <link href="media/css/style.css" rel="stylesheet" type="text/css">
+      <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,600|Montserrat:400,700' rel='stylesheet' type='text/css'>
+  </head>
+  <body>
+      <header id="top">
+        <h1>Raccoon Attack</h1>
+        <div class="logo"></div>
+      </header>
+        <section id="intro">
+            <ul class="toc">
+          </li><li><a href="#paper">Paper</a>
+          </li><li><a href="#question-answer">Q&amp;A</a></li>
+        </ul>
+        </section>
+
+       <section>
+
+         <p>Raccoon is a timing vulnerability in the TLS <b>specification</b> that affects HTTPS and
+        other services that rely on SSL and TLS. These protocols
+        allow everyone on the Internet to browse the web, use email,
+        shop online, and send instant messages without third-parties
+        being able to read the communication.</p>
+
+        <p>Raccoon allows attackers under certain conditions to break the encryption and read
+        sensitive communications.
+
+        The vulnerability is really hard to exploit and relies on very precise timing measurements and on a specific server configuration to be exploitable.
+		</p>
+
+		<h2>Attack Overview</h2>
+		<p>
+		Diffie-Hellman (DH) key exchange is a well-established method for exchanging keys in TLS connections.
+		When using Diffie-Hellman, both TLS peers generate private keys at random (a and b) and compute their public keys:
+		g<sup>a</sup> mod p and g<sup>b</sup> mod p.
+		These public keys are sent in the TLS KeyExchange messages.
+		Once both keys are received, both the client and server can compute a shared key <i>g<sup>ab</sup> mod p</i>
+		- called <i>premaster secret</i> -
+		which is used to derive all TLS session keys with a specific <i>key derivation function</i>.
+		</p>
+		<p>
+		Our Raccoon attack exploits a TLS specification side channel; TLS 1.2 (and all previous versions) prescribes that all leading zero bytes in the premaster secret are <a href="https://tools.ietf.org/html/rfc5246#section-8.1.2">stripped before used in further computations</a>. Since the resulting premaster secret is used as an input into the key derivation function, which is based on hash functions with different timing profiles, precise timing measurements may enable an attacker to construct an oracle from a TLS server. This oracle tells the attacker whether a computed premaster secret starts with zero or not. For example, the attacker could eavesdrop g<sup>a</sup> sent by the client, resend it to the server, and determine whether the resulting premaster secret starts with zero or not.
+		</p>
+		<p>
+		Learning one byte from a premaster secret would not help the attacker much. However, here the attack gets interesting. Imagine the attacker intercepted a ClientKeyExchange message containing the value g<sup>a</sup>. The attacker can now construct values related to g<sup>a</sup> and send them to the server in distinct TLS handshakes. More concretely, the attacker constructs values g<sup>r<sub>i</sub></sup>*g<sup>a</sup>, which lead to premaster secrets g<sup>r<sub>i</sub>*b</sup>*g<sup>ab</sup>. Based on the server timing behavior, the attacker can find values leading to premaster secrets starting with zero. In the end, this helps the attacker to construct a set of equations and use a solver for the Hidden Number Problem (HNP) to compute the original premaster secret established between the client and the server.
+		</p>
+
+		<img src="media/img/attack-overview.png"></img>
+
+		<h2 id="paper">Full Technical Paper</h2>
+    <p><a href="RacoonAttack.pdf">Raccoon Attack:
+      Finding and Exploiting Most-Significant-Bit-Oracles in TLS-DH(E)</a>.
+      Robert Merget, Marcus Brinkmann, Nimrod Aviram, Juraj Somorovsky,
+      Johannes Mittmann, and Jörg Schwenk.
+    </p>
+
+
+
+		<h2 id="question-answer">FAQ</h2>
+
+        <h3>I am an admin, should I drop everything and fix this?</h3>
+
+        <p>Probably not. Raccoon is a complex timing attack and it is very hard to exploit. It requires a lot of stars to align to decrypt a real-world TLS session. There are, however, <a href="#f5">exceptions</a>.
+
+        <h3>What can the attackers gain?</h3>
+
+        <p>In the case the (rare) circumstances are met,
+        Raccoon allows an attacker to decrypt the connection between users and the server. This
+        typically includes, but is not limited to, usernames and
+        passwords, credit card numbers, emails, instant messages, and
+        sensitive documents.</p>
+
+        <h3>Who is vulnerable?</h3>
+
+		<p>The attack generally targets the Diffie-Hellman key exchange in TLS 1.2 and below. There are two prerequisites for the attack:
+			<ul>
+				<li>The server reuses public DH keys in the TLS handshake. This is the case if the server is configured to use static TLS-DH cipher suites, or if the server uses ephemeral cipher suites (TLS-DHE) and <a href="#reuse">reuses ephemeral keys</a> for multiple connections. Luckily, this was already considered bad practice before the attack, as it does not provide forward secrecy.</li>
+				<li>The attacker can execute precise timing measurements, which allow him/her to find out whether the first byte of the DH shared secret starts with zero or not.</li>
+			</ul>
+		</p>
+
+
+        <h3>So how practical is the attack?</h3>
+
+        <p>That is an excellent question that probably does not have a satisfying answer.
+	Cryptographic(!) attacks against TLS generally tend to be not used a lot by real-world attackers as far as we know.
+	The attacker needs particular circumstances for the Raccoon attack to work.
+	He needs to be close to the target server to perform high precision timing measurements.
+	He needs the victim connection to use DH(E) and the server to reuse ephemeral keys.
+	And finally, the attacker needs to observe the original connection.
+	For a real attacker, this is a lot to ask for.
+	However, in comparison to what an attacker would need to do to break modern cryptographic primitives like AES,
+	the attack does not look complex anymore.
+	But still, a real-world attacker will probably use other attack vectors that are simpler and more reliable than this attack.</p>
+
+
+	<h3>Is my website vulnerable?</h3>
+
+	<p>It might be. You can check this using tools like:
+	<ul>
+		<li><a href="https://www.ssllabs.com/ssltest/">www.ssllabs.com</a>, your server might be vulnerable if "DH public server param (Ys) reuse" says "yes".</li>
+		<li>We will release our own tool very soon.</li>
+	</ul>
+	</p>
+
+
+	<h3>Is my browser/client vulnerable?</h3>
+
+	<p>The vulnerability is not really a client-side vulnerability.
+The client can do nothing about this, except not to support DH(E) cipher suites.
+Modern browsers should not support these cipher suites anymore.
+As far as we know, Firefox was the last major browser that supported DHE,
+and dropped support for it in <a href="https://www.mozilla.org/en-US/firefox/78.0/releasenotes/">Firefox 78</a> in June 2020 (by now, most clients should run at least that version, if not later versions).
+You can check if your browser still supports DH(E) <a href="https://clienttest.ssllabs.com:8443/ssltest/viewMyClient.html">here</a>,
+but to reiterate, there is nothing practical clients can or should do about the attack.</p>
+
+
+
+        <h3>Does Raccoon allow you to steal the private key?</h3>
+
+        <p>No, you have to perform the attack for each individual connection you want to attack.</p>
+
+        <h3>Is TLS 1.3 also affected?</h3>
+
+        <p>No. In TLS 1.3, the leading zero bytes are preserved for DHE cipher suites (as well as for ECDHE ones) and keys should not be reused.
+	However, there exists a variant of TLS 1.3, which explicitly allows key reuse (or even encourages it),
+	called <a href="https://www.etsi.org/deliver/etsi_ts/103500_103599/10352303/01.01.01_60/ts_10352303v010101p.pdf">ETS or eTLS</a>.
+	If ephemeral keys get reused in either variant, they could lead to micro-architectural side channels,
+	which could be exploited, although leading zero bytes are preserved.
+	We recommend not using these variants.</p>
+
+        <h3>Is ECDH also affected?</h3>
+
+        <p>Generally no. In TLS, the PMS's leading zero bytes are preserved in all versions of TLS for ECDH.
+	So a secure, leak-free implementation should be possible.
+	In other protocols, this might not be the case.
+	To the best of our knowledge, even if side channels were present,
+	the best currently known algorithms still require a lot more known bits to work for ECDH than what is possible to get with Raccoon. We still want to point out that the ECDH variant of the HNP has not been studied as extensively as the traditional HNP. Therefore, it cannot be guaranteed that future improvements to these algorithms might also make these attacks work for ECDH.</p>
+
+
+
+        <h3>Is DTLS affected?</h3>
+
+        <p>Yes.</p>
+
+
+
+		<h3 id="f5">So is this really only a timing vulnerability?</h3>
+		<p>Sadly no. A bug in your software can also make this attack possible without timing measurements.
+		We performed a large-scale Internet scan to analyze a large variety of TLS servers and found - surprise -
+		several devices showing different behavior resulting from the first byte of the premaster secret.
+		So far, we were able to identify and report one of them: an older version of F5 BIG-IP.
+		You should probably check that you are not running a vulnerable configuration
+		(see <a href="https://support.f5.com/csp/article/K91158923">CVE-2020-5929</a>)
+		since this allows mounting a direct attack without complex timing measurements.
+		If you are running a vulnerable configuration, you should probably patch now.
+		Note that, also in the case of the vulnerable F5 BIG-IP, the attack is only practical if the server reuses DH public keys.
+		We recommend not dismissing the ability of the attacker to measure precise timing, and instead move away from DHE for
+		clients and avoid key reuse for servers.</p>
+
+        <h3 id="reuse">How common is DHE key reuse?</h3>
+
+        <p>We performed a measurement across the Alexa Top 100k websites on the Internet.
+	3.33% of those servers reused their ephemeral DH keys at least once.
+	<a href="https://dl.acm.org/doi/pdf/10.1145/2987443.2987480"> Springall et al.</a>
+	found that 4.4% of the Alexa Top 1M reused DH keys, as of 2016.
+	</p>
+
+
+	<h3>Since when does the vulnerability exist?</h3>
+
+        <p>The vulnerability was undiscovered for more than 20 years (at least since SSLv3, published in 1996).
+	The flaw was fixed for TLS 1.3 in <a href="https://github.com/tlswg/tls13-spec/pull/462">draft-14</a>,
+	thanks to David Benjamin from Google who flagged this issue.</p>
+
+        <h3>Why wasn't this discovered earlier?</h3>
+
+        <p>The attack combines a lot of details of the involved primitives.
+	The <a href="https://crypto.stanford.edu/~dabo/pubs/abstracts/dhmsb.html">Hidden Number Problem (HNP)</a>,
+	which we ultimately use to exploit the timing side channel,
+	has never been used to exploit its original target (the Diffie-Hellman Key Exchange).
+	That is because no one knew a technique to get the most significant bits of a Diffie-Hellman shared secret.
+	Since then, the HNP was mostly used in other settings like DSA or ECDSA,
+	and the knowledge that it also works for DH got forgotten.
+	The fact that the leading zeros in the TLS-DH(E) premaster secrets are stripped is also a TLS detail that probably only a few people knew of.</p>
+
+
+        <h3>
+	Why does TLS-DH(E) strip leading zero bytes in the first place?</h3>
+
+        <p>We found the answer to this question in an old <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=291498">Bugzilla entry</a>.
+	It seems like SSL 3 was supposed to implement PKCS#3, which mandates that leading zero bits of the PMS are preserved.
+	But implementors misunderstood the wording in the spec of SSL 3: </p>
+	<blockquote>
+	<i>A conventional Diffie-Hellman computation is performed.  The
+   negotiated key (Z) is used as the pre_master_secret [...].</i>
+	</blockquote><br>
+
+	<p>
+	Instead, leading zero bytes were stripped. By the time this was discovered, the damage was already done.
+	For TLS 1.0, it was then intentionally changed to remove leading zero bytes, probably to avoid further confusion.
+	When elliptic curves were later added to the standard,
+	they explicitly mentioned that the leading zeros of the PMS have to be preserved,
+	resulting in the current situation where they are preserved for ECDH but not for DH.
+</p>
+
+
+        <h3>Why is the attack called "Raccoon"?</h3>
+
+        <p>Raccoon is not an acronym.
+	Raccoons are just cute animals, and it is well past time that an attack will be named after them :)</p>
+
+		<h3>How have vendors responded to this vulnerability?</h3>
+
+        <p>
+		<ul>
+			<li>F5 assigned the issue <a href="https://nvd.nist.gov/vuln/detail/CVE-2020-5929">CVE-2020-5929</a>.
+			In particular, several F5 products allow executing a special version of the attack, without the need
+			for precise timing measurements. F5 recommends their customers to patch the products or to enforce usage of fresh ephemeral keys.
+			Please refer to the <a href="https://support.f5.com/csp/article/K91158923">F5 Security Advisory</a>.</li>
+			<li>OpenSSL assigned the issue <a href="https://nvd.nist.gov/vuln/detail/CVE-2020-1968">CVE-2020-1968</a>.
+			OpenSSL does use fresh DH keys per default since version 1.0.2f (which made SSL_OP_SINGLE_DH_USE default as a response to CVE-2016-0701). Therefore, the attack mainly affects OpenSSL 1.0.2 when a DH certificate is in use, which is rare. OpenSSL 1.1.1 never reuses a DH secret and does not implement any "static" DH ciphersuites.
+			To mitigate the attack, the developers moved all remaining DH cipher suites into the "weak-ssl-ciphers" list. In addition, motivated by this research, the developers also activated the fresh generation of EC ephemeral keys in OpenSSL 1.0.2w.
+			Please refer to the
+      <a href="https://www.openssl.org/news/secadv/20200909.txt">OpenSSL Security Advisory</a>.</li>
+			<li>Mozilla assigned the issue <a href="https://nvd.nist.gov/vuln/detail/CVE-2020-12413">CVE-2020-12413</a>.
+			It has been solved by disabling DH and DHE cipher suites in Firefox
+			(which was already planned before the Raccoon disclosure).</li>
+			<li>Microsoft assigned the issue <a href="https://nvd.nist.gov/vuln/detail/CVE-2020-1596">CVE-2020-1596</a>. Please refer to the <a href="https://portal.msrc.microsoft.com/en-US/security-guidance/advisory/CVE-2020-1596">Microsoft Security Response Center portal</a>.</li>
+		</ul>
+		</p>
+		<p>
+		BearSSL and BoringSSL are not affected because they do not support DH(E) cipher suites.
+		Botan, Mbed TLS and s2n do not support static DH cipher suites. Their DHE cipher suites never reuse ephemeral keys.
+		</p>
+
+        <h3>I thought there was a security proof for TLS-DH(E)
+	(<a href="https://eprint.iacr.org/2011/219.pdf">here</a>
+	and <a href="https://eprint.iacr.org/2014/182.pdf">here</a>). Why wasn't this covered by the proof?</h3>
+
+        <p>A problem with a lot of current cryptographic proof techniques is that they are often <b>not designed to model side channels</b>
+	(within the protocol). They will assume that all operations are always executed in constant time,
+	although this might be impossible to achieve in practice.
+	Additionally, they do not model the encoding of secrets within the primitives.
+	These details get lost in the proven model of the protocol.
+	To prove that TLS-DH(E) is secure, the PRF-ODH assumption had to be introduced,
+	and the proof relied on this assumption to hold for TLS.
+	In theory, this assumption is still fine for TLS, but for all practical means, the assumption does not hold in real TLS implementations.</p>
+
+	<h3>How is this attack related to other TLS attacks?</h3>
+	<p>Many of you would probably remember <a href="http://archiv.infsec.ethz.ch/education/fs08/secsem/bleichenbacher98.pdf">Bleichenbacher's attack</a> (see also <a href="https://robotattack.org">ROBOT</a> for practical exploits). This adaptive chosen-ciphertext attack exploits server behavior differences by processing RSA PKCS#1 v1.5 messages. It allows the attacker to decrypt the premaster secret after a few thousands of connections. From the attacker model perspective, the Raccoon attack is very similar to Bleichenbacher's attack; the attacker also needs to send several modified ClientKeyExchange messages to the server, observe its responses, and perform some cryptographic computations to reveal the premaster secret. In contrast to Bleichenbacher's attack, Raccoon targets the DH key exchange. </p>
+
+	<p>Lucky 13 is another cool attack you might have in mind when reading the description of the Raccoon attack. In Lucky 13, AlFardan and Paterson exploited different timing behaviors of HMACs computed over different TLS record lengths. This allowed them to distinguish valid from invalid paddings and apply CBC padding oracle attacks. The attack works in a <a href="https://nerdoholic.org/uploads/dergln/beast_part2/ssl_jun21.pdf">BEAST attack scenario</a> and allows the attacker to decrypt TLS records. In contrast, our Raccoon attack exploits the timing behavior difference resulting from the HMAC computations over premaster secrets of different lengths. It reveals the premaster secret and thus decrypts the whole connection based on a single eavesdropped ClientKeyExchange message. Our Raccoon attack was inspired by the Lucky 13 side channel.  </p>
+
+    <h3>What about other protocols?</h3>
+    <p>As you may imagine, there are many protocols using DH key exchange. For example, we can confirm that SSH does also strip leading zero bits.
+	However, according to <a href="https://www.cs.umd.edu/class/spring2017/cmsc818O/papers/crypto-shortcuts.pdf">Springall et. al</a>
+	SSH does a better job at avoiding key reuse than TLS did, and therefore the attack is not exploitable in SSH.</p>
+	<p><a href="https://www.w3.org/TR/xmlenc-core1/#sec-DHKeyAgreement">XML Encryption</a> and <a href="https://tools.ietf.org/html/rfc5996#section-2.14">IPsec</a> preserve leading zero bytes.</p>
+	<p>JSON Web Encryption only offers ECDH key agreement. The established shared secret should be processed as described in the <a href="https://csrc.nist.gov/publications/detail/sp/800-56a/rev-3/final">NIST Special Publication 800-56A</a>. This document recommends to preserve leading zero bytes, see Appendix C.1 and C.2.</p>
+	<p>There are many other protocols using DH key exchange. Their analysis is often hard since the documents do not provide information how to handle established shared secrets so that source code analysis or manual tests are necessary. It would also be interesting to see whether similar Raccoon-styled attacks would be applicable to the newest post quantum schemes.</p>
+
+
+	<h3>So is a protocol, which preserves leading zero bytes in the DH shared secret, completely secure against this attack?</h3>
+	<p>Our main attack relies on the TLS specification problem resulting from the stripped zeros.
+	Executing a key derivation function over premaster secrets of different lengths leads to different timing behaviors.
+	This is the side channel that showed to perform well in our measurements. </p>
+
+	<p>However, it is very likely that even if the shared secret preserves leading zero bytes, there could arise different side channels allowing the attacker to mount such an attack.
+	Implementing a constant-time computation is very challenging; the side channel can arrise from the underlying big number library implementation or aligning shared secret to the modulus length.
+	While such side channels are not as significant as the side channel described in our paper, a stronger attacker could still use powerful techniques like micro-architectural attacks to find out whether computed shared secrets start with zero or not.</p>
+
+
+	<h3>Is this vulnerability really serious enough to deserve a name, a logo and a web page?</h3>
+
+	<p>It is a vulnerability in the TLS specification, so we think...yes. In addition, it was fun to create them :)</p>
+
+        <h3>How can I contact you?</h3>
+
+        <p>You can contact us via mail or twitter:</p>
+        <ul>
+			<li>Robert Merget, Ruhr University Bochum, <a href="https://twitter.com/ic0nz1">@ic0nz1</a>, robert.merget@rub.de</li>
+			<li>Marcus Brinkmann, Ruhr University Bochum, <a href="https://twitter.com/lambdafu">@lambdafu</a>, marcus.brinkmann@rub.de</li>
+			<li>Nimrod Aviram, Tel Aviv University, <a href="https://twitter.com/NimrodAviram">@NimrodAviram</a>, nimrodav@mail.tau.ac.il</li>
+			<li>Juraj Somorovsky, Paderborn University, <a href="https://twitter.com/jurajsomorovsky">@jurajsomorovsky</a>, juraj.somorovsky@upb.de</li>
+			<li>Johannes Mittmann, Bundesamt für Sicherheit in der Informationstechnik (BSI) </li>
+			<li>J&ouml;rg Schwenk, Ruhr University Bochum, <a href="https://twitter.com/JoergSchwenk">@JoergSchwenk</a>, joerg.schwenk@rub.de</li>
+		</ul>
+
+	  </section>
+
+      <div class="footer-logo"></div>
+
+      <footer>
+        <p class="text-muted">Last updated September 9., 2020.  The Raccoon
+        website is free to use under
+        a <a href="//creativecommons.org/publicdomain/zero/1.0/">CC0</a>
+        license), and uses a design
+        by <a href="http://sarahmadden.com/">Sarah Madden</a>.
+		The Raccoon logo was designed by <a href="https://www.fiverr.com/tnhs_project">tnhs_project</a>.
+        Additional development for this website was done by Christian
+        Dresen of M&uuml;nster University of Applied Sciences. Adapted for the Raccoon Attack by Robert Merget.
+        | <a href="imprint.html">Imprint</a></p>
+      </footer>
+  </body>
 </html>
